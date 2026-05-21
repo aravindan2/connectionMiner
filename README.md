@@ -151,27 +151,38 @@ No additional R or MATLAB dependencies are needed for the Python pipeline.
 
 ## Data
 
-Input data is **not included** in this repository (files are large). The pipeline expects the following layout under a `data_root` directory:
+Input data is **not included** in this repository (files are large, ~1.1 GB total).
+
+### Download
+
+All required files are bundled in a single Dropbox folder, arranged in the exact layout the pipeline expects:
+
+**➜ [Download dataset (Dropbox, ~1.1 GB)](https://www.dropbox.com/scl/fo/pmbekzqpx120m3pz6br0w/AJzZCEqRSMpLW0omJGSQTf4?rlkey=5hoi38x3jidkbb96audp5jqdc&dl=0)**
+
+The contents of this folder *are* a ready-to-use `data_root` — download it and point the pipeline at it (see below); no internal path edits are needed.
+
+### Layout
 
 ```
 data_root/
 ├── scRNAseq PreMNs/
-│   ├── counts_cg_corrected.txt          # preMN expression matrix (genes × cells)
-│   ├── Cell_Cluster.xlsx                # preMN cluster → type mapping
-│   └── umapCoord_vnc.csv                # preMN UMAP coordinates
-├── Matrix and umap raw files/Merged/
-│   ├── matched_gene_expression_cg_corrected.txt   # MN expression matrix
-│   ├── matched_clusters.xlsx                      # MN cluster metadata
-│   └── matched_umap_coordinates_time_specific.xlsx
+│   ├── counts_cg_corrected.txt                 # preMN expression matrix, genes × cells (407 MB)
+│   ├── Cell_Cluster.xlsx                        # preMN cluster → type mapping (580 KB)
+│   ├── umapCoord_vnc.csv                        # preMN UMAP coordinates (1.7 MB)
+│   └── PreMNs-MNs connection_20250107.xlsx      # connectome + lineage / motor pool (1.8 MB)
 ├── Matrix and umap raw files/
-│   └── MNs_detailed_info_matrix_*.xlsx  # MN detailed info
-├── scRNAseq PreMNs/
-│   └── PreMNs-MNs connection_*.xlsx     # Connectome table (preMN ↔ MN)
+│   ├── MNs_detailed_info_matrix format_with_developmental_age.xlsx   # MN covariates + connectome columns (148 KB)
+│   └── Merged/
+│       ├── matched_gene_expression_cg_corrected.txt        # MN expression matrix (698 MB)
+│       ├── matched_clusters.xlsx                            # MN clusters; drives timepoint filter (112 KB)
+│       └── matched_umap_coordinates_time_specific.xlsx      # MN UMAP coordinates (308 KB)
 └── Genes list/
-    └── Interactome_v3.xlsx              # Known ligand–receptor gene pairs
+    └── Interactome_v3.xlsx                      # ligand–receptor pairs; synaptic export only (16 KB)
 ```
 
-By default, `data_root` is resolved from `cm_minimal/paths.py`. To point to a different location, edit `paths.py` or pass overrides via `merge_config()`.
+The first eight files are required for a full run. `Genes list/Interactome_v3.xlsx` is needed only for the `synaptic_interaction_table.xlsx` export.
+
+By default, `data_root` is resolved from `cm_minimal/paths.py`, which points at a hard-coded local Dropbox path. To use the downloaded folder, edit the `data_root` value in `paths.py` or pass overrides via `merge_config()`.
 
 ---
 
