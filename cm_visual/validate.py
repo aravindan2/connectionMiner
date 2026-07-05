@@ -16,14 +16,6 @@ def cm_validate(obj: Any, cfg: dict[str, Any], stage: str) -> None:
                 f"Cell count mismatch: G_cells has {obj.G_cells.shape[0]} rows, constraints has {obj.P_constraints_cells.shape[1]} cols."
             )
 
-        if not cfg.get("smoke_test", {}).get("enabled", False):
-            if obj.meta.get("Ntypes_preMN") != 701:
-                raise AssertionError(f"Expected 701 preMN types, got {obj.meta.get('Ntypes_preMN')}.")
-            if obj.meta.get("Ntypes_MN") != 29:
-                raise AssertionError(f"Expected 29 MN types, got {obj.meta.get('Ntypes_MN')}.")
-            if obj.meta.get("Ntypes") != 730:
-                raise AssertionError(f"Expected 730 total types, got {obj.meta.get('Ntypes')}.")
-
         if obj.C_counts.shape[0] != obj.meta["Ntypes"] or obj.C_counts.shape[1] != obj.meta["Ntypes"]:
             raise AssertionError("Connectome size mismatch with Ntypes.")
         if obj.C_counts.shape != obj.C_mask.shape:

@@ -10,7 +10,6 @@ from .paths import cm_get_paths
 def default_config(input_mode: str = "binary") -> dict[str, Any]:
     cfg: dict[str, Any] = {
         "seed": 750,
-        "timepoint_filter": 3,
         "input_mode": input_mode,
         "paths": cm_get_paths(),
         "load": {
@@ -18,27 +17,12 @@ def default_config(input_mode: str = "binary") -> dict[str, Any]:
             "numeric_class": "float32",
             "allow_reorder": True,
         },
-        "sct": {
-            "clip": 10,
-            "n_genes_use": 4000,
-            "min_cells": 5,
-            "verbosity": 1,
-            "method": "poisson",
-            "gene_select": "variance",
-            "future_max_gb": 8,
-            "regress_batch": True,
-            "rscript": "/Library/Frameworks/R.framework/Resources/bin/Rscript",
-        },
-        "pg": {
-            "n_genes_use": 4000,
-            "min_cells": 5,
-        },
         "binary": {
-            "n_genes_use": 4000,
+            "n_genes_use": 3000,
             "min_cells": 5,
         },
         "metacell": {
-            "target_size": 10,
+            "target_size": 15,
             "min_size": 5,
             "min_samples_prior": 10,
             "n_pcs": 50,
@@ -47,7 +31,6 @@ def default_config(input_mode: str = "binary") -> dict[str, Any]:
         },
         "compute_type_gene_probabilities": True,
         "export_type_gene_probabilities": True,
-        "export_synaptic_interaction_table": True,
         "solver": {
             "num_iter": 100,
             "lambda_sparsity": 0.001,
@@ -57,21 +40,16 @@ def default_config(input_mode: str = "binary") -> dict[str, Any]:
             "regression_iterations": 50,
             "use_binary_connectome": True,
             "beta_rank": 0,
-            "interactome_constraint": "none",
-            "use_complement": True,
+            "use_complement": False,
             "P_init": "random_proportional",
             "beta_init": "random",
-            "time_limit_per_step": 30,
+            "time_limit_per_step": 60,
         },
+        "compute_type_gene_probabilities": True,
         "smoke_test": {
             "enabled": False,
-            "max_cells": 500,
-            "max_genes": 500,
-        },
-        "viz": {
-            "min_cells_identifiable": 5,
-            "staircaser_k": 8,
-            "n_hvg": 150,
+            "max_cells": 999999,
+            "max_genes": 999999,
         },
     }
     return cfg
@@ -97,7 +75,7 @@ def merge_config(base: dict[str, Any], override: dict[str, Any] | None) -> dict[
 
 def ensure_run_dir(cfg: dict[str, Any], run_tag_prefix: str = "run") -> Path:
     repo_root = Path(cfg["paths"]["repo_root"])
-    run_root = repo_root / "cm_minimal" / "runs"
+    run_root = repo_root / "cm_visual" / "runs"
     run_root.mkdir(parents=True, exist_ok=True)
 
     from datetime import datetime
