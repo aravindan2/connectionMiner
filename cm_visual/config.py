@@ -44,6 +44,7 @@ def default_config(input_mode: str = "binary") -> dict[str, Any]:
             "P_init": "random_proportional",
             "beta_init": "random",
             "time_limit_per_step": 60,
+            "backend": "auto",
         },
         "compute_type_gene_probabilities": True,
         "smoke_test": {

@@ -17,19 +17,27 @@ def cm_preprocess_binary(raw: RawData, cfg: dict[str, Any]) -> PrepData:
     X_bin = (raw.G_cells > 0).astype(float)
     ng_shared = raw.genes_shared.size
 
-    n_genes_use = min(cfg.get("binary", {}).get("n_genes_use", 4000), ng_shared)
-    min_cells = max(int(cfg.get("binary", {}).get("min_cells", 5)), 1)
+    custom_gene_idx = cfg.get("binary", {}).get("custom_gene_idx", None)
+    if custom_gene_idx is not None:
+        solver_gene_idx = np.asarray(custom_gene_idx, dtype=int)
+        solver_gene_idx = solver_gene_idx[solver_gene_idx < ng_shared]
+        if solver_gene_idx.size == 0:
+            raise RuntimeError("custom_gene_idx is empty after bounds check")
+        print(f"  Using custom gene set: {solver_gene_idx.size} genes (of {ng_shared} loaded)")
+    else:
+        n_genes_use = min(cfg.get("binary", {}).get("n_genes_use", 4000), ng_shared)
+        min_cells = max(int(cfg.get("binary", {}).get("min_cells", 5)), 1)
 
-    nz = np.sum(X_bin, axis=0)
-    cand = np.where(nz >= min_cells)[0]
-    if cand.size == 0:
-        cand = np.arange(ng_shared)
+        nz = np.sum(X_bin, axis=0)
+        cand = np.where(nz >= min_cells)[0]
+        if cand.size == 0:
+            cand = np.arange(ng_shared)
 
-    mu = np.mean(X_bin[:, cand], axis=0)
-    var = mu * (1.0 - mu)
-    ord_idx = np.argsort(-var)
-    ng_use = min(n_genes_use, cand.size)
-    solver_gene_idx = cand[ord_idx[:ng_use]]
+        mu = np.mean(X_bin[:, cand], axis=0)
+        var = mu * (1.0 - mu)
+        ord_idx = np.argsort(-var)
+        ng_use = min(n_genes_use, cand.size)
+        solver_gene_idx = cand[ord_idx[:ng_use]]
 
     X_feat = X_bin[:, solver_gene_idx]
     cell_to_metacell, meta_sizes, signature_table = _build_metacells_from_features(

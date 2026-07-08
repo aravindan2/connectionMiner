@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import time
 from typing import Any
 
@@ -10,7 +11,28 @@ from scipy.sparse.linalg import svds
 from .models import CmResult, PrepData
 
 
+def _backend_available(name: str) -> bool:
+    """Check if a backend module is available and has CUDA."""
+    if name == "torch":
+        try:
+            mod = importlib.import_module("torch")
+            return mod.cuda.is_available()
+        except Exception:
+            return False
+    return False
+
+
 def cm_solve(prep: PrepData, cfg: dict[str, Any]) -> CmResult:
+    backend = str(cfg.get("solver", {}).get("backend", "auto")).lower()
+    if backend == "auto":
+        backend = "torch" if _backend_available("torch") else "numpy"
+    if backend == "torch" and _backend_available("torch"):
+        from .torch_solver import cm_solve_torch
+        print(f"  [GPU] Torch backend selected (CUDA available)")
+        return cm_solve_torch(prep, cfg)
+    if backend == "torch":
+        print(f"  [CPU] Torch requested but CUDA unavailable — falling back to NumPy")
+
     np.random.seed(cfg["seed"])
     t0 = time.time()
 
