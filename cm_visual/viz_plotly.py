@@ -10,6 +10,14 @@ from plotly.subplots import make_subplots
 
 from .models import CmResult, PrepData, RawData
 
+D30 = [
+    "#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2",
+    "#7f7f7f","#bcbd22","#17becf","#aec7e8","#ffbb78","#98df8a","#ff9896",
+    "#c5b0d5","#c49c94","#f7b6d2","#c7c7c7","#dbdb8d","#9edae5",
+    "#393b79","#637939","#8c6d31","#843c39","#7b4173","#5254a3",
+    "#6b6ecf","#9c9ede","#ce6dbd","#8c6eb5",
+]
+
 
 def run_all_visualizations(
     raw: RawData,
@@ -39,6 +47,9 @@ def run_all_visualizations(
 
     print("  Viz 6/6 — Solver loss trajectory ...")
     _viz_loss_trajectory(cm, output_dir)
+
+    print("  Viz 7/7 — Combined three-panel overview ...")
+    _viz_combined_three_panel(raw, prep, cm, meta_dfs, output_dir)
 
     print(f"  All visualizations saved to {output_dir}")
 
@@ -248,10 +259,7 @@ def _viz_inferred_types(
 
     unique_types = np.unique(cell_inferred_type)
     type_to_color_idx = {t: i % 30 for i, t in enumerate(unique_types)}
-    discrete_cmap = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf",
-                      "#aec7e8","#ffbb78","#98df8a","#ff9896","#c5b0d5","#c49c94","#f7b6d2","#c7c7c7","#dbdb8d","#9edae5",
-                      "#393b79","#637939","#8c6d31","#843c39","#7b4173","#5254a3","#6b6ecf","#9c9ede","#ce6dbd","#8c6eb5"]
-    cell_colors_type = [discrete_cmap[type_to_color_idx[t] % len(discrete_cmap)] for t in cell_inferred_type]
+    cell_colors_type = [D30[type_to_color_idx[t] % len(D30)] for t in cell_inferred_type]
 
     fig.add_trace(
         go.Scattergl(
@@ -475,7 +483,383 @@ def _viz_loss_trajectory(
 
 
 def _discrete_colorscale(n: int) -> list[str]:
-    base = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf",
-            "#aec7e8","#ffbb78","#98df8a","#ff9896","#c5b0d5","#c49c94","#f7b6d2","#c7c7c7","#dbdb8d","#9edae5"]
-    repeats = (n // len(base)) + 1
-    return (base * repeats)[:n]
+    repeats = (n // len(D30)) + 1
+    return (D30 * repeats)[:n]
+
+
+def _viz_combined_three_panel(
+    raw: RawData,
+    prep: PrepData,
+    cm: CmResult,
+    meta_dfs: dict[str, pd.DataFrame],
+    output_dir: Path,
+) -> None:
+    cell_index = meta_dfs["cell_index"]
+    type_index = meta_dfs["type_index"]
+    type_names = type_index["type"].values.astype(str)
+    families = type_index["family"].values.astype(str)
+    subsystems = type_index["subsystem"].values.astype(str)
+    categories = type_index["category"].values.astype(str)
+
+    barcodes = cell_index["cell_barcode"].values.astype(str)
+    annotations = cell_index["MultiomeAnnotated"].values.astype(str)
+    tiers = cell_index["cell_type"].values
+    clusters_raw = cell_index["MultiomeNN"].values.astype(str)
+    cell_to_meta = prep.cell_to_metacell
+
+    # # allowed types per cell
+    n_allowed = np.array(raw.P_constraints_cells.sum(axis=0)).flatten().astype(int)
+
+    # --- Panel 1: Original Cell Type Annotations ---
+    unique_ann = np.unique(annotations)
+    ann_to_idx = {a: i for i, a in enumerate(unique_ann)}
+    ann_colors = [
+        D30[ann_to_idx[a] % len(D30)] if a not in ("nan", "") else "#cccccc"
+        for a in annotations
+    ]
+
+    # --- Panel 2: Metacells ---
+    meta_ids_unique = np.unique(cell_to_meta)
+    n_meta = len(meta_ids_unique)
+    dcolors = _discrete_colorscale(n_meta)
+    meta_colors = [dcolors[m % len(dcolors)] for m in cell_to_meta]
+    meta_sizes = prep.meta_sizes.astype(int)
+
+    # --- Panel 3: Inferred Type ---
+    inferred_type_idx = np.argmax(cm.P, axis=0)
+    P_max = np.max(cm.P, axis=0)
+    cell_inferred_type = np.array([inferred_type_idx[m] for m in cell_to_meta])
+    cell_P_max = np.array([P_max[m] for m in cell_to_meta])
+    cell_family = np.array([families[t] for t in cell_inferred_type])
+    cell_subsystem = np.array([subsystems[t] for t in cell_inferred_type])
+    cell_category = np.array([categories[t] for t in cell_inferred_type])
+
+    unique_types = np.unique(cell_inferred_type)
+    type_to_color_idx = {t: i % 30 for i, t in enumerate(unique_types)}
+    inferred_colors = [D30[type_to_color_idx[t] % len(D30)] for t in cell_inferred_type]
+
+    epsilon = 1e-30
+    P_norm = cm.P / np.maximum(np.sum(cm.P, axis=0, keepdims=True), epsilon)
+    P_entropy = -np.sum(P_norm * np.log2(np.maximum(P_norm, epsilon)), axis=0)
+    cell_entropy = np.array([P_entropy[m] for m in cell_to_meta])
+    max_entropy = np.log2(cm.P.shape[0]) if cm.P.shape[0] > 1 else 1.0
+    cell_entropy_norm = cell_entropy / max_entropy
+
+    umap_x = raw.umap_xy[:, 0].astype(str)
+    umap_y = raw.umap_xy[:, 1].astype(str)
+
+    customdata = np.column_stack([
+        barcodes,
+        annotations,
+        tiers,
+        cell_to_meta.astype(str),
+        [type_names[t] for t in cell_inferred_type],
+        cell_P_max.astype(str),
+        cell_entropy_norm.astype(str),
+        meta_sizes[cell_to_meta].astype(str),
+        clusters_raw,
+        n_allowed.astype(str),
+        cell_family,
+        cell_subsystem,
+        cell_category,
+        umap_x,
+        umap_y,
+    ])
+
+    fig = make_subplots(
+        rows=1, cols=3,
+        subplot_titles=(
+            "Original Cell Type Annotations",
+            "Cells Colored by Metacell",
+            "After ConnectionMiner (Inferred Type)",
+        ),
+        horizontal_spacing=0.05,
+    )
+
+    fig.add_trace(
+        go.Scattergl(
+            x=raw.umap_xy[:, 0], y=raw.umap_xy[:, 1],
+            mode="markers",
+            marker=dict(size=2, color=ann_colors, opacity=0.7),
+            customdata=customdata,
+            hovertemplate=(
+                "<b>%{customdata[1]}</b><br>"
+                "Barcode: %{customdata[0]}<br>"
+                "Tier: %{customdata[2]}<br>"
+                "Metacell: %{customdata[3]}<br>"
+                "<extra></extra>"
+            ),
+            showlegend=False, name="annotation",
+        ),
+        row=1, col=1,
+    )
+
+    fig.add_trace(
+        go.Scattergl(
+            x=raw.umap_xy[:, 0], y=raw.umap_xy[:, 1],
+            mode="markers",
+            marker=dict(size=2, color=meta_colors, opacity=0.7),
+            customdata=customdata,
+            hovertemplate=(
+                "<b>Metacell %{customdata[3]}</b><br>"
+                "Annotation: %{customdata[1]}<br>"
+                "Tier: %{customdata[2]}<br>"
+                "Barcode: %{customdata[0]}<br>"
+                "<extra></extra>"
+            ),
+            showlegend=False, name="metacell",
+        ),
+        row=1, col=2,
+    )
+
+    fig.add_trace(
+        go.Scattergl(
+            x=raw.umap_xy[:, 0], y=raw.umap_xy[:, 1],
+            mode="markers",
+            marker=dict(size=2, color=inferred_colors, opacity=0.7),
+            customdata=customdata,
+            hovertemplate=(
+                "<b>%{customdata[4]}</b><br>"
+                "Confidence: %{customdata[5]}<br>"
+                "Annotation: %{customdata[1]}<br>"
+                "Barcode: %{customdata[0]}<br>"
+                "Tier: %{customdata[2]}<br>"
+                "Metacell: %{customdata[3]}<br>"
+                "Metacell Size: %{customdata[7]}<br>"
+                "Norm. Entropy: %{customdata[6]}<br>"
+                "<extra></extra>"
+            ),
+            showlegend=False, name="inferred",
+        ),
+        row=1, col=3,
+    )
+
+    for _col in [1, 2, 3]:
+        fig.add_trace(
+            go.Scattergl(
+                x=[None], y=[None],
+                mode="markers",
+                marker=dict(
+                    size=14,
+                    color="rgba(255, 50, 50, 0.9)",
+                    line=dict(width=2, color="white"),
+                    symbol="circle-open",
+                ),
+                showlegend=False,
+                hoverinfo="none",
+                name="highlight",
+            ),
+            row=1, col=_col,
+        )
+
+    fig.update_layout(
+        title="FlyWire Visual System x ConnectionMiner: 3-Stage Pipeline Overview",
+        width=1500, height=500,
+        hovermode="closest",
+        margin=dict(r=320),
+    )
+    fig.update_xaxes(title_text="UMAP1", row=1, col=1)
+    fig.update_yaxes(title_text="UMAP2", row=1, col=1)
+    fig.update_xaxes(title_text="UMAP1", row=1, col=2)
+    fig.update_yaxes(title_text="UMAP2", row=1, col=2)
+    fig.update_xaxes(title_text="UMAP1", row=1, col=3)
+    fig.update_yaxes(title_text="UMAP2", row=1, col=3)
+
+    html_path = output_dir / "viz_combined_three_panel.html"
+    fig.write_html(html_path, include_plotlyjs="cdn", div_id="three-panel")
+
+    _inject_cross_highlight_js(html_path)
+
+
+def _inject_cross_highlight_js(html_path: Path) -> None:
+    css_block = """
+    <style>
+    #cell-info-panel {
+        position: fixed; top: 60px; right: 10px; width: 280px;
+        background: white; border: 1px solid #ddd; border-radius: 8px;
+        padding: 0; font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 1000; max-height: 80vh; overflow-y: auto;
+    }
+    #cell-info-header {
+        padding: 10px 15px; border-radius: 8px 8px 0 0; color: white;
+        font-weight: 700; font-size: 13px; letter-spacing: 0.3px;
+    }
+    #cell-info-body { padding: 10px 15px; }
+    #cell-info-body h3 {
+        margin: 0 0 8px 0; font-size: 14px;
+        border-bottom: 1px solid #eee; padding-bottom: 4px; color: #333;
+    }
+    .info-row { margin: 3px 0; display: flex; }
+    .info-label { font-weight: 600; width: 100px; color: #555; flex-shrink: 0; }
+    .info-value { flex: 1; color: #222; word-break: break-all; }
+    .no-selection { color: #999; font-style: italic; text-align: center; padding: 20px 0; }
+    .key-info { margin: 6px 0 10px 0; padding: 8px; background: #f7f7f7; border-radius: 4px; font-size: 13px; }
+    .key-info .key-label { font-weight: 600; color: #333; }
+    .key-info .key-value { color: #1f77b4; font-weight: 700; }
+    </style>
+    """
+
+    info_panel_html = """
+    <div id="cell-info-panel">
+        <div id="cell-info-header">Cell Information</div>
+        <div id="cell-info-body">
+            <div id="cell-info-content">
+                <div class="no-selection">Hover over a cell to see details</div>
+            </div>
+        </div>
+    </div>
+    """
+
+    js_block = """
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var plotDiv = document.getElementById('three-panel');
+        if (!plotDiv) return;
+
+        var hlIdx = function() {
+            var n = plotDiv.data ? plotDiv.data.length : 0;
+            return [n - 3, n - 2, n - 1];
+        };
+        var mainIdx = [0, 1, 2];
+        var _syncing = false;
+
+        var panelMeta = [
+            { name: 'Original Annotations', color: '#2ca02c', keyLabel: 'Annotation', keyIdx: 1 },
+            { name: 'Metacells', color: '#9467bd', keyLabel: 'Metacell', keyIdx: 3 },
+            { name: 'Inferred Type', color: '#d62728', keyLabel: 'Inferred Type', keyIdx: 4 },
+        ];
+
+        var CD = {
+            BARCODE: 0, ANNOTATION: 1, TIER: 2, META_ID: 3,
+            INF_TYPE: 4, CONFIDENCE: 5, ENTROPY: 6, META_SIZE: 7,
+            CLUSTER: 8, N_ALLOWED: 9, FAMILY: 10, SUBSYSTEM: 11,
+            CATEGORY: 12, UMAP_X: 13, UMAP_Y: 14,
+        };
+
+        function renderInfo(cd, cn) {
+            var pm = panelMeta[cn];
+            document.getElementById('cell-info-header').style.background = pm.color;
+            document.getElementById('cell-info-header').textContent = pm.name;
+
+            var keyVal = cd[pm.keyIdx] || 'N/A';
+            var keyExtra = '';
+            if (cn === 1) keyExtra = ' (Size: ' + cd[CD.META_SIZE] + ' cells)';
+            if (cn === 2) keyExtra = ' (confidence: ' + cd[CD.CONFIDENCE] + ', entropy: ' + cd[CD.ENTROPY] + ')';
+
+            var sections = [
+                { title: 'Identity', rows: [
+                    ['Barcode', CD.BARCODE],
+                    ['MultiomeNN Cluster', CD.CLUSTER],
+                    ['Constraint Tier', CD.TIER],
+                    ['Allowed Types', CD.N_ALLOWED],
+                ]},
+                { title: 'Type Annotation', rows: [
+                    ['Annotated Type', CD.ANNOTATION],
+                    ['Family', CD.FAMILY],
+                    ['Subsystem', CD.SUBSYSTEM],
+                    ['Category', CD.CATEGORY],
+                ]},
+                { title: 'Metacell', rows: [
+                    ['Metacell ID', CD.META_ID],
+                    ['Size (cells)', CD.META_SIZE],
+                ]},
+                { title: 'ConnectionMiner Result', rows: [
+                    ['Inferred Type', CD.INF_TYPE],
+                    ['Confidence', CD.CONFIDENCE],
+                    ['Norm. Entropy', CD.ENTROPY],
+                ]},
+                { title: 'UMAP Position', rows: [
+                    ['UMAP1', CD.UMAP_X],
+                    ['UMAP2', CD.UMAP_Y],
+                ]},
+            ];
+
+            var html = '<div class="key-info"><span class="key-label">' + pm.keyLabel + ': </span><span class="key-value">' + keyVal + '</span>' + keyExtra + '</div>';
+            for (var s = 0; s < sections.length; s++) {
+                html += '<h3>' + sections[s].title + '</h3>';
+                for (var r = 0; r < sections[s].rows.length; r++) {
+                    var row = sections[s].rows[r];
+                    html += '<div class="info-row"><span class="info-label">' + row[0] + ':</span><span class="info-value">' + (cd[row[1]] || '') + '</span></div>';
+                }
+            }
+            document.getElementById('cell-info-content').innerHTML = html;
+        }
+
+        plotDiv.on('plotly_hover', function(data) {
+            if (!data.points || data.points.length === 0) return;
+            var pt = data.points[0];
+            var idx = pt.pointIndex;
+            var hl = hlIdx();
+
+            for (var c = 0; c < 3; c++) {
+                var x = plotDiv.data[mainIdx[c]].x[idx];
+                var y = plotDiv.data[mainIdx[c]].y[idx];
+                Plotly.restyle(plotDiv, { 'x': [[x]], 'y': [[y]] }, hl[c]);
+            }
+
+            var cd = pt.customdata;
+            if (!cd) return;
+
+            var cn = pt.curveNumber;
+            if (cn < 0 || cn > 2) cn = 0;
+            renderInfo(cd, cn);
+        });
+
+        plotDiv.on('plotly_unhover', function() {
+            var hl = hlIdx();
+            for (var c = 0; c < 3; c++) {
+                Plotly.restyle(plotDiv, { 'x': [[null]], 'y': [[null]] }, hl[c]);
+            }
+            document.getElementById('cell-info-header').style.background = '#1f77b4';
+            document.getElementById('cell-info-header').textContent = 'Cell Information';
+            document.getElementById('cell-info-content').innerHTML =
+                '<div class="no-selection">Hover over a cell to see details</div>';
+        });
+
+        function getRange(ed, key) {
+            if (ed[key] && Array.isArray(ed[key].range) && ed[key].range.length === 2)
+                return ed[key].range;
+            var r0 = ed[key + '.range[0]'], r1 = ed[key + '.range[1]'];
+            if (r0 !== undefined && r1 !== undefined) return [r0, r1];
+            return null;
+        }
+
+        var allAxes = ['xaxis','xaxis2','xaxis3','yaxis','yaxis2','yaxis3'];
+
+        plotDiv.on('plotly_relayout', function(ed) {
+            if (_syncing) return;
+            if (!ed || Object.keys(ed).length === 0) return;
+
+            var update = {};
+            for (var a = 0; a < allAxes.length; a++) {
+                var key = allAxes[a];
+                var range = getRange(ed, key);
+                if (!range) continue;
+                var type = key.replace(/[0-9]/g, '');
+                for (var b = 0; b < allAxes.length; b++) {
+                    var target = allAxes[b];
+                    if (target.startsWith(type) && target !== key) {
+                        update[target + '.range[0]'] = range[0];
+                        update[target + '.range[1]'] = range[1];
+                    }
+                }
+            }
+
+            if (Object.keys(update).length > 0) {
+                _syncing = true;
+                Plotly.relayout(plotDiv, update);
+                setTimeout(function() { _syncing = false; }, 200);
+            }
+        });
+    });
+    </script>
+    """
+
+    with open(html_path, "r") as f:
+        html = f.read()
+
+    html = html.replace("</body>", css_block + "\n" + info_panel_html + "\n" + js_block + "\n</body>")
+
+    with open(html_path, "w") as f:
+        f.write(html)

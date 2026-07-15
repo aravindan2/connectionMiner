@@ -503,9 +503,23 @@ def main() -> None:
     print("\n--- Building consolidated comparison viz ---")
     build_consolidated_viz(all_stats, exp_names, num_iter)
 
+    print("\n--- Building interactive ablation explorer ---")
+    try:
+        from build_ablation_explorer import build_html, load_shared, load_experiments
+        shared = load_shared()
+        experiments = load_experiments()
+        html = build_html(shared, experiments)
+        explorer_path = ABLATION_ROOT / "viz_ablation_explorer.html"
+        with open(explorer_path, "w") as f:
+            f.write(html)
+        print(f"  Saved: {explorer_path}")
+    except Exception as exc:
+        print(f"  Warning: ablation explorer failed: {exc}")
+
     print(f"\n{'='*70}")
     print(f"All experiments complete. Results in: {ABLATION_ROOT}")
     print(f"Consolidated viz: {ABLATION_ROOT / 'viz_ablation_comparison.html'}")
+    print(f"Ablation explorer: {ABLATION_ROOT / 'viz_ablation_explorer.html'}")
     print(f"{'='*70}")
 
 
